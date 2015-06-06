@@ -1,0 +1,184 @@
+    using Windows.Devices.Gpio;
+    using System.Threading.Tasks;
+    using System.Diagnostics;
+    using System.Runtime.Serialization;
+    using System.Runtime.Serialization.Json;
+    using Windows.Web.Http;
+    /// <summary>
+    /// An empty page that can be used on its own or navigated to within a Frame.
+    /// </summary>
+    public sealed partial class MainPage : Page
+    {
+        private string webApiEndPoint = "[WEB API URL]";
+        Guid deviceId = new Guid("Your GUID]");
+        double threasholdTemperature = 25;
+
+        public MainPage()
+        {
+            this.InitializeComponent();
+
+            this.Loaded += MainPage_Loaded;
+            //    InitLEDGPIO();
+            InitThmtGPIO();
+        }
+
+
+        GpioPin ledPin;
+        int LED_PIN = 5;
+        private void InitLEDGPIO()
+        {
+            var gpio = GpioController.GetDefault();
+            ledPin = gpio.OpenPin(LED_PIN);
+            if (ledPin != null)
+            {
+                ledPin.Write(GpioPinValue.High);
+                ledPin.SetDriveMode(GpioPinDriveMode.Output);
+            }
+        }
+        bool ledStatus = false;
+        DispatcherTimer ledTimer;
+        private void MainPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            TestConnect().Wait();
+            //   StartFlipLED();
+            //   LEDRemoteControl();
+            StartThmtSensing();
+        }
+
+        private void StartFlipLED()
+        {
+            ledTimer = new DispatcherTimer();
+            ledTimer.Interval = TimeSpan.FromMilliseconds(500);
+            ledTimer.Tick += Timer_TickLED;
+            ledTimer.Start();
+        }
+
+        private void Timer_TickLED(object sender, object e)
+        {
+            FlipLED();
+        }
+
+        private void FlipLED()
+        {
+            if (ledStatus)
+            {
+                ledPin.Write(GpioPinValue.Low);
+            }
+            else
+            {
+                ledPin.Write(GpioPinValue.High);
+            }
+            ledStatus = !ledStatus;
+        }
+
+        private void LEDRemoteControl()
+        {
+            ledTimer = new DispatcherTimer();
+            ledTimer.Interval = TimeSpan.FromSeconds(5);
+            ledTimer.Tick += LedTimer_RemoteTick;
+            ledTimer.Start();
+        }
+
+        private void LedTimer_RemoteTick(object sender, object e)
+        {
+            var client = new HttpClient();
+            try
+            {
+                var response = client.GetStringAsync(new Uri(webApiEndPoint + "/api/Win10IoT?deviceid=" + deviceId.ToString()));
+                response.AsTask().Wait();
+                var content = response.GetResults();
+                if (content.Contains("off"))
+                {
+                    ledPin.Write(GpioPinValue.High);
+                    Debug.WriteLine("LED - to be off");
+                }
+                else
+                {
+                    ledPin.Write(GpioPinValue.Low);
+                    Debug.WriteLine("LED - to be on");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+            }
+        }
+
+        int THMT_PIN = 18;
+        GpioPin thmtPin;
+        private void InitThmtGPIO()
+        {
+            var gpio = GpioController.GetDefault();
+            thmtPin = gpio.OpenPin(THMT_PIN);
+            thmtPin.SetDriveMode(GpioPinDriveMode.Input);
+        }
+
+        private void StartThmtSensing()
+        {
+            var current = thmtPin.Read();
+            var status = current == GpioPinValue.Low;
+            SendThmtStatus(status);
+
+            thmtPin.ValueChanged += ThmtPin_ValueChanged;
+        }
+        private void ThmtPin_ValueChanged(GpioPin sender, GpioPinValueChangedEventArgs args)
+        {
+            bool extension = (args.Edge == GpioPinEdge.FallingEdge);
+            SendThmtStatus(extension);
+        }
+
+        private void SendThmtStatus(bool extension)
+        {
+            var packet = new SensorPacket()
+            {
+                DeviceId = deviceId.ToString(),
+                Temperature = threasholdTemperature,
+                Extend = extension,
+                MeasuredTime = DateTime.Now
+            };
+            var serializer = new DataContractJsonSerializer(typeof(SensorPacket));
+            MemoryStream ms = new MemoryStream();
+
+            serializer.WriteObject(ms, packet);
+            ms.Position = 0;
+            StreamReader sr = new StreamReader(ms);
+            var content = new Windows.Web.Http.HttpStringContent(sr.ReadToEnd(), Windows.Storage.Streams.UnicodeEncoding.Utf8, "application/json");
+            var client = new Windows.Web.Http.HttpClient();
+            client.DefaultRequestHeaders.Accept.Add(new Windows.Web.Http.Headers.HttpMediaTypeWithQualityHeaderValue("text/json"));
+            var response = client.PostAsync(new Uri(webApiEndPoint + "/api/Win10IoT"), content);
+            response.AsTask().Wait();
+            var responseResults = response.GetResults();
+        }
+
+        private async Task<bool> TestConnect()
+        {
+            bool result = false;
+
+            var client = new Windows.Web.Http.HttpClient();
+            client.DefaultRequestHeaders.Add("device-id", deviceId.ToString());
+            client.DefaultRequestHeaders.Add("device-message", "Hello from RPi2");
+            var response = client.GetAsync(new Uri("http://egiotkitholservice.azurewebsites.net/api/DeviceConnect"), HttpCompletionOption.ResponseContentRead);
+            response.AsTask().Wait();
+            var responseResult = response.GetResults();
+            if (responseResult.StatusCode == Windows.Web.Http.HttpStatusCode.Ok)
+            {
+                result = true;
+                var received = await responseResult.Content.ReadAsStringAsync();
+                Debug.WriteLine("Recieved - " + received);
+            }
+            return result;
+        }
+    }
+
+    [DataContract]
+    public class SensorPacket
+    {
+        [DataMember]
+        public string DeviceId { get; set; }
+        [DataMember]
+        public double Temperature { get; set; }
+        [DataMember]
+        public bool Extend { get; set; }
+        [DataMember]
+        public DateTime MeasuredTime { get; set; }
+    }

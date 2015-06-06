@@ -1,0 +1,57 @@
+    using Microsoft.WindowsAzure;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.Table;
+
+    public class Win10IoTController : ApiController
+    {
+        public void Post([FromBody] SensorPacket packet)
+        {
+            var storeCS = CloudConfigurationManager.GetSetting("StorageConnectionString");
+            var storageAccount = CloudStorageAccount.Parse(storeCS);
+            var tableClient = storageAccount.CreateCloudTableClient();
+            var dsTable = tableClient.GetTableReference("DeviceStatus");
+            dsTable.CreateIfNotExistsAsync().Wait();
+            var dr = new Models.DeviceStatus(packet.DeviceId, packet.MeasuredTime)
+            {
+                Temperature = packet.Temperature,
+                Extend = packet.Extend
+            };
+            dsTable.ExecuteAsync(TableOperation.Insert(dr)).Wait();
+        }
+
+        public string Get([FromUri] string deviceid)
+        {
+            var storeCS = CloudConfigurationManager.GetSetting("StorageConnectionString");
+            var storageAccount = CloudStorageAccount.Parse(storeCS);
+            var tableClient = storageAccount.CreateCloudTableClient();
+            var ledTable = tableClient.GetTableReference("LedStatus");
+            ledTable.CreateIfNotExistsAsync().Wait();
+            var query = new TableQuery<Models.LEDStatus>().Where(
+                TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, deviceid));
+            bool on = false;
+            bool stored = false;
+            foreach(var r in ledTable.ExecuteQuery(query))
+            {
+                on = r.On;
+                stored = true;
+                break;
+            }
+            if (!stored)
+            {
+                var ls = new Models.LEDStatus(deviceid)
+                {
+                    On = false
+                };
+                ledTable.ExecuteAsync(TableOperation.Insert(ls)).Wait();
+            }
+            return on ? "on" : "off";
+        }
+    }
+
+    public class SensorPacket
+    {
+        public string DeviceId { get; set; }
+        public double Temperature { get; set; }
+        public bool Extend { get; set; }
+        public DateTime MeasuredTime { get; set; }
+    }

@@ -1,0 +1,33 @@
+    public class LEDStatus : TableEntity
+    {
+        public LEDStatus()
+        {
+
+        }
+        public LEDStatus(string deviceId)
+        {
+            PartitionKey = "LED";
+            RowKey = deviceId;
+        }
+
+        public bool On { get; set; }
+    }
+
+    public class DeviceStatus : TableEntity
+    {
+        public DeviceStatus()
+        {
+
+        }
+
+        public DeviceStatus(string deviceId, DateTime time)
+        {
+            PartitionKey = deviceId;
+            RowKey = deviceId + time.ToString("yyyyMMddhhmmssfff");
+            MeasuredTime = time;
+        }
+
+        public double Temperature { get; set; }
+        public bool Extend { get; set; }
+        public DateTime MeasuredTime { get; set; }
+    }
