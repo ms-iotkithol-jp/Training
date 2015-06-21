@@ -18,8 +18,8 @@
             this.InitializeComponent();
 
             this.Loaded += MainPage_Loaded;
-            //    InitLEDGPIO();
-            InitThmtGPIO();
+            InitLEDGPIO();
+            // InitThmtGPIO();
         }
 
 
@@ -40,9 +40,9 @@
         private void MainPage_Loaded(object sender, RoutedEventArgs e)
         {
             TestConnect().Wait();
-            //   StartFlipLED();
+            StartFlipLED();
             //   LEDRemoteControl();
-            StartThmtSensing();
+            //   StartThmtSensing();
         }
 
         private void StartFlipLED()
