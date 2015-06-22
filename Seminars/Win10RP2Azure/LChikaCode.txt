@@ -10,7 +10,7 @@
     public sealed partial class MainPage : Page
     {
         private string webApiEndPoint = "[WEB API URL]";
-        Guid deviceId = new Guid("Your GUID]");
+        Guid deviceId = new Guid(/* "[Your GUID]" */);
         double threasholdTemperature = 25;
 
         public MainPage()
